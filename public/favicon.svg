@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9333ea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#c084fc;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#purpleGrad)" rx="32"/>
+  <rect x="40" y="40" width="176" height="176" fill="none" stroke="#ffffff" stroke-width="8" rx="8"/>
+  <line x1="128" y1="40" x2="128" y2="216" stroke="#ffffff" stroke-width="8"/>
+  <line x1="40" y1="128" x2="216" y2="128" stroke="#ffffff" stroke-width="8"/>
+  <line x1="84" y1="40" x2="84" y2="216" stroke="#ffffff" stroke-width="4" stroke-dasharray="8,8"/>
+  <line x1="172" y1="40" x2="172" y2="216" stroke="#ffffff" stroke-width="4" stroke-dasharray="8,8"/>
+  <line x1="40" y1="84" x2="216" y2="84" stroke="#ffffff" stroke-width="4" stroke-dasharray="8,8"/>
+  <line x1="40" y1="172" x2="216" y2="172" stroke="#ffffff" stroke-width="4" stroke-dasharray="8,8"/>
+</svg>
