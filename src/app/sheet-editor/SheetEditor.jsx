@@ -3,9 +3,7 @@ import Sidebar from '../../components/sheet-editor/Sidebar'
 import Checkbox from '../../components/forms/Checkbox'
 import PixelEditor from '../../components/pixel-editor/PixelEditor'
 
-// Helper function to load initial state from localStorage
-const getInitialState = () => {
-  const defaults = {
+const defaults = {
     rows: 4,
     columns: 4,
     selectedFrames: {},
@@ -136,6 +134,7 @@ const getInitialState = () => {
     }
 }
 
+const getInitialState = () => {
   try {
     const savedState = localStorage.getItem('spriteSheetEditorState')
     if (savedState) {
@@ -202,8 +201,21 @@ function SheetEditor() {
   const [sheetPanOffset, setSheetPanOffset] = useState({ x: 0, y: 0 })
   const [isSheetPanning, setIsSheetPanning] = useState(false)
   const [sheetPanStart, setSheetPanStart] = useState({ x: 0, y: 0 })
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [showDemoModal, setShowDemoModal] = useState(false)
+  const [pixelEditorKey, setPixelEditorKey] = useState(0)
   const fileInputRef = useRef(null)
   const imgRef = useRef(null)
+
+  useEffect(() => {
+    if (!localStorage.getItem('spriteSheetImage') && !localStorage.getItem('spriteSheetEditorState')) {
+      initializeDemoImage((dataUrl) => {
+        setImage(dataUrl)
+        setSavedImage(dataUrl)
+        setPixelEditorKey(k => k + 1)
+      })
+    }
+  }, [])
 
   useEffect(() => {
     const updateScale = () => {
@@ -406,8 +418,22 @@ function SheetEditor() {
 
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col relative select-none">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 shadow-lg">
+      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 shadow-lg flex items-center justify-between">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Sprite Sheet Editor</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDemoModal(true)}
+            className="px-3 py-1.5 bg-purple-900/40 hover:bg-purple-800/60 border border-purple-700/50 hover:border-purple-600 rounded-lg text-sm font-medium text-purple-300 hover:text-purple-200 transition-colors"
+          >
+            View Demo
+          </button>
+          <button
+            onClick={() => setShowResetModal(true)}
+            className="px-3 py-1.5 bg-red-900/40 hover:bg-red-800/60 border border-red-700/50 hover:border-red-600 rounded-lg text-sm font-medium text-red-300 hover:text-red-200 transition-colors"
+          >
+            Reset Editor
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
@@ -558,6 +584,7 @@ function SheetEditor() {
 
         {selectedFrameIndex !== null && image && (
           <PixelEditor
+            key={pixelEditorKey}
             image={image}
             frameIndex={selectedFrameIndex}
             rows={rows}
@@ -593,6 +620,59 @@ function SheetEditor() {
           onPaddingChange={setPadding}
         />
       </div>
+
+      {showDemoModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowDemoModal(false)}>
+          <div className="bg-gray-800 rounded-xl p-6 w-96 border border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-white mb-2">View Demo</h3>
+            <p className="text-gray-400 text-sm mb-6">This will replace your current sprite sheet and all settings with the demo. Your existing work will be lost.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  localStorage.clear()
+                  window.location.reload()
+                }}
+                className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors text-white"
+              >
+                Load Demo
+              </button>
+              <button
+                onClick={() => setShowDemoModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowResetModal(false)}>
+          <div className="bg-gray-800 rounded-xl p-6 w-96 border border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-white mb-2">Reset Editor</h3>
+            <p className="text-gray-400 text-sm mb-6">This will remove your sprite sheet and reset all settings to their defaults. This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  localStorage.removeItem('spriteSheetImage')
+                  localStorage.setItem('spriteSheetEditorState', JSON.stringify(defaults))
+                  window.location.reload()
+                }}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors text-white"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isGlobalDragging && (
         <div className="fixed inset-0 bg-purple-600/20 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-dashed border-purple-500 pointer-events-none">
