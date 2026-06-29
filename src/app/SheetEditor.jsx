@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import Sidebar from '../../components/sheet-editor/Sidebar'
-import Checkbox from '../../components/forms/Checkbox'
-import PixelEditor from '../../components/pixel-editor/PixelEditor'
-import MenuDropdown from '../../components/ui/MenuDropdown'
+import Sidebar from '../components/sheet-editor/Sidebar'
+import Checkbox from '../components/forms/Checkbox'
+import PixelEditor from './PixelEditor'
+import MenuDropdown from '../components/ui/MenuDropdown'
+import PaddingModal from '../components/sheet-editor/PaddingModal'
 
 const defaults = {
     rows: 4,
@@ -203,8 +204,6 @@ function SheetEditor() {
   const [spriteSize, setSpriteSize] = useState(initialState.spriteSize || null)
   const [resizeAlgo, setResizeAlgo] = useState(initialState.resizeAlgo || 'nearest')
   const [showPaddingModal, setShowPaddingModal] = useState(false)
-  const [paddingModalValues, setPaddingModalValues] = useState({ top: 0, right: 0, bottom: 0, left: 0 })
-  const [paddingModalMode, setPaddingModalMode] = useState('add')
   const [imageScale, setImageScale] = useState(1)
   const [sheetPanOffset, setSheetPanOffset] = useState({ x: 0, y: 0 })
   const [isSheetPanning, setIsSheetPanning] = useState(false)
@@ -429,51 +428,6 @@ function SheetEditor() {
 
     return () => clearInterval(interval)
   }, [isAnimating, fps, selectedFrames])
-
-  const handleApplyPadding = () => {
-    const p = paddingModalValues
-    const srcDataUrl = image
-    if (!srcDataUrl) return
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      if (paddingModalMode === 'add') {
-        canvas.width = img.width + p.left + p.right
-        canvas.height = img.height + p.top + p.bottom
-        ctx.drawImage(img, p.left, p.top)
-        const dataUrl = canvas.toDataURL('image/png')
-        localStorage.setItem('spriteSheetImage', dataUrl)
-        setImage(dataUrl)
-        setSavedImage(dataUrl)
-        setPadding(prev => ({
-          top: (prev?.top || 0) + p.top,
-          right: (prev?.right || 0) + p.right,
-          bottom: (prev?.bottom || 0) + p.bottom,
-          left: (prev?.left || 0) + p.left,
-        }))
-      } else {
-        const innerW = img.width - p.left - p.right
-        const innerH = img.height - p.top - p.bottom
-        canvas.width = Math.max(1, innerW)
-        canvas.height = Math.max(1, innerH)
-        ctx.drawImage(img, p.left, p.top, innerW, innerH, 0, 0, innerW, innerH)
-        const dataUrl = canvas.toDataURL('image/png')
-        localStorage.setItem('spriteSheetImage', dataUrl)
-        setImage(dataUrl)
-        setSavedImage(dataUrl)
-        setPadding(prev => ({
-          top: Math.max(0, (prev?.top || 0) - p.top),
-          right: Math.max(0, (prev?.right || 0) - p.right),
-          bottom: Math.max(0, (prev?.bottom || 0) - p.bottom),
-          left: Math.max(0, (prev?.left || 0) - p.left),
-        }))
-      }
-      setPixelEditorKey(k => k + 1)
-      setShowPaddingModal(false)
-    }
-    img.src = srcDataUrl
-  }
 
   const scaleFrame = (srcCtx, srcX, srcY, srcW, srcH, dstW, dstH, algo) => {
     const srcData = srcCtx.getImageData(srcX, srcY, srcW, srcH)
@@ -723,7 +677,7 @@ function SheetEditor() {
                     label="Sprite Sheet"
                     variant="toolbar"
                     items={[
-                      { label: 'Add / Remove Padding', onClick: () => { setPaddingModalValues({ top: 0, right: 0, bottom: 0, left: 0 }); setPaddingModalMode('add'); setShowPaddingModal(true) } },
+                      { label: 'Add / Remove Padding', onClick: () => setShowPaddingModal(true) },
                     ]}
                   />
                   <span className="text-xs text-gray-500 mr-2 shrink-0">Frame px:</span>
@@ -830,7 +784,7 @@ function SheetEditor() {
               }}
             >
               <div 
-                className="relative inline-block rounded-lg overflow-hidden shadow-2xl border border-gray-800"
+                className="relative inline-block overflow-hidden shadow-2xl border border-gray-800"
                 style={{
                   backgroundImage: 'url(/checkerboard.png)',
                   backgroundSize: '32px 32px'
@@ -928,6 +882,8 @@ function SheetEditor() {
             onSave={handleSaveFrame}
             initialSettings={pixelEditorSettings}
             onSettingsChange={setPixelEditorSettings}
+            selectedFrames={selectedFrames}
+            onFrameChange={setSelectedFrameIndex}
           />
         )}
 
@@ -957,51 +913,23 @@ function SheetEditor() {
       </div>
 
       {showPaddingModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPaddingModal(false)}>
-          <div className="bg-gray-800 rounded-xl p-6 w-[480px] border border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-white mb-2">Add / Remove Padding</h3>
-            <p className="text-gray-400 text-sm mb-5">Modify the pixel border around the sprite sheet canvas. Padding values in the sidebar will be updated accordingly.</p>
-            <div className="grid grid-cols-6 gap-3 mb-5">
-              {['top', 'right', 'bottom', 'left'].map(side => (
-                <div key={side}>
-                  <label className="block text-xs font-medium text-gray-400 mb-1 capitalize">{side.charAt(0).toUpperCase() + side.slice(1)}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={paddingModalValues[side]}
-                    onChange={(e) => setPaddingModalValues(prev => ({ ...prev, [side]: parseInt(e.target.value) || 0 }))}
-                    className="w-full px-2 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-                  />
-                </div>
-              ))}
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-400 mb-1">Mode</label>
-                <select
-                  value={paddingModalMode}
-                  onChange={(e) => setPaddingModalMode(e.target.value)}
-                  className="w-full px-2 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-                >
-                  <option value="add">Add</option>
-                  <option value="remove">Remove</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleApplyPadding}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors text-white"
-              >
-                Apply
-              </button>
-              <button
-                onClick={() => setShowPaddingModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <PaddingModal
+          image={image}
+          onClose={() => setShowPaddingModal(false)}
+          onApply={(dataUrl, mode, p) => {
+            localStorage.setItem('spriteSheetImage', dataUrl)
+            setImage(dataUrl)
+            setSavedImage(dataUrl)
+            setPadding(prev => ({
+              top: mode === 'add' ? (prev?.top || 0) + p.top : Math.max(0, (prev?.top || 0) - p.top),
+              right: mode === 'add' ? (prev?.right || 0) + p.right : Math.max(0, (prev?.right || 0) - p.right),
+              bottom: mode === 'add' ? (prev?.bottom || 0) + p.bottom : Math.max(0, (prev?.bottom || 0) - p.bottom),
+              left: mode === 'add' ? (prev?.left || 0) + p.left : Math.max(0, (prev?.left || 0) - p.left),
+            }))
+            setPixelEditorKey(k => k + 1)
+            setShowPaddingModal(false)
+          }}
+        />
       )}
 
       {showResizeModal && (

@@ -1,4 +1,4 @@
-import SheetEditor from './app/sheet-editor/SheetEditor'
+import SheetEditor from './app/SheetEditor'
 
 const routes = [
   {

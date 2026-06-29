@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import MenuDropdown from '../ui/MenuDropdown'
-import Slider from '../forms/Slider'
-import Checkbox from '../forms/Checkbox'
-import ColorPicker from './ColorPicker'
-import ReplaceColor from './ReplaceColor'
+import MenuDropdown from '../components/ui/MenuDropdown'
+import Slider from '../components/forms/Slider'
+import Checkbox from '../components/forms/Checkbox'
+import ColorPicker from '../components/pixel-editor/ColorPicker'
+import ReplaceColor from '../components/pixel-editor/ReplaceColor'
 
-function PixelEditor({ image, frameIndex, rows, columns, padding, onClose, onSave, initialSettings, onSettingsChange }) {
+function PixelEditor({ image, frameIndex, rows, columns, padding, onClose, onSave, initialSettings, onSettingsChange, selectedFrames, onFrameChange }) {
   const [zoom, setZoom] = useState(initialSettings?.zoom || 100)
   const [tool, setTool] = useState('pencil')
   const [color, setColorState] = useState(initialSettings?.color || { hex: '#FF0000', r: 255, g: 0, b: 0, a: 255 })
@@ -730,7 +730,11 @@ function PixelEditor({ image, frameIndex, rows, columns, padding, onClose, onSav
         </div>
         
         <span className="text-gray-400">|</span>
-        <span className="text-white font-semibold whitespace-nowrap">Frame {frameIndex + 1}</span>
+        <span className="text-white font-semibold whitespace-nowrap">Frame {(() => {
+          const enabled = Object.entries(selectedFrames || {}).filter(([,v]) => v).map(([k]) => parseInt(k)).sort((a,b)=>a-b)
+          const pos = enabled.indexOf(frameIndex)
+          return pos >= 0 ? pos + 1 : '?'
+        })()}</span>
         <span className="text-gray-400">|</span>
         <span className="text-white font-bold">{tools.find(t => t.id === tool)?.name || 'Tool'}</span>
         
@@ -1060,6 +1064,31 @@ function PixelEditor({ image, frameIndex, rows, columns, padding, onClose, onSav
           </div>
 
           <div className="bg-gray-900 border-t border-gray-800 px-4 py-3 flex items-center gap-4">
+            {onFrameChange && (() => {
+              const enabled = Object.entries(selectedFrames || {}).filter(([,v]) => v).map(([k]) => parseInt(k)).sort((a,b)=>a-b)
+              const pos = enabled.indexOf(frameIndex)
+              const prevIdx = enabled[(pos - 1 + enabled.length) % enabled.length]
+              const nextIdx = enabled[(pos + 1) % enabled.length]
+              return (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onFrameChange(prevIdx)}
+                    className="flex items-center justify-center w-8 h-8 rounded bg-gray-800 hover:bg-gray-700 transition-colors"
+                    title="Previous frame"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_left</span>
+                  </button>
+                  <span className="text-sm text-gray-300 w-12 text-center tabular-nums">{pos + 1}/{enabled.length}</span>
+                  <button
+                    onClick={() => onFrameChange(nextIdx)}
+                    className="flex items-center justify-center w-8 h-8 rounded bg-gray-800 hover:bg-gray-700 transition-colors"
+                    title="Next frame"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_right</span>
+                  </button>
+                </div>
+              )
+            })()}
             <Slider
               label="Zoom"
               min={100}
