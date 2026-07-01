@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 const SheetEditorContext = createContext(null)
 
@@ -52,65 +52,22 @@ const defaults = {
   pixelEditor: defaultPixelEditor,
 }
 
-const defaultDemo = {
-  activeIndex: 0,
-  sidebarWidth: 530,
-  previewHeight: 463,
-  spriteSheets: [
-    createSheet('demo', {
-      rows: 5,
-      columns: 6,
-      padding: [5, 5, 5, 5],
-      selectedFrames: {
-        "0": false, "1": false, "2": false, "3": false, "4": false,
-        "5": true, "6": false, "7": true, "8": true, "9": false,
-        "10": true, "11": true, "12": false, "13": true, "14": true,
-        "15": false, "16": true, "17": true, "18": false, "19": true,
-        "20": true, "21": false, "22": true, "23": true, "24": false,
-        "25": false, "26": false, "27": false, "28": false, "29": false
-      },
-      preview: {
-        fps: 10,
-        zoom: 268,
-        isAnimating: true,
-        currentFrame: 0,
-        selectedFrameIndex: 16,
-        panOffset: { x: -22, y: 62 },
-        backgroundColor: { hex: '#2D304D', r: 45, g: 48, b: 77, a: 255, h: 234, s: 26, l: 24 },
-        backgroundMode: 'image',
-        backgroundImage: '/preview-bg-06.png',
-      },
-    })
-  ]
-}
-
 const getInitialState = () => {
   try {
     const savedState = localStorage.getItem('spriteSheetEditorState')
     if (savedState) {
       const parsed = JSON.parse(savedState)
       if (parsed && parsed.spriteSheets) {
-        let previewHeight = parsed.previewHeight
-        const sheets = parsed.spriteSheets.map(sheet => {
-          const { preview, ...rest } = sheet
-          if (previewHeight === undefined && preview?.height !== undefined) {
-            previewHeight = preview.height
-          }
-          const { height, ...previewWithoutHeight } = preview || {}
-          return { ...rest, preview: previewWithoutHeight }
-        })
         return {
           ...defaults,
-          ...parsed,
-          previewHeight: previewHeight ?? defaults.previewHeight,
-          spriteSheets: sheets,
+          ...parsed
         }
       }
     }
   } catch (error) {
     console.error('Error loading state from localStorage:', error)
   }
-  return { ...defaults, ...defaultDemo }
+  return { ...defaults }
 }
 
 const getSheetImage = (key) => {
@@ -120,20 +77,6 @@ const getSheetImage = (key) => {
     console.error('Error loading image from localStorage:', error)
     return null
   }
-}
-
-export const initializeDemoImage = (onLoad) => {
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  img.onload = () => {
-    const canvas = document.createElement('canvas')
-    canvas.width = img.width
-    canvas.height = img.height
-    canvas.getContext('2d').drawImage(img, 0, 0)
-    const dataUrl = canvas.toDataURL('image/png')
-    onLoad(dataUrl)
-  }
-  img.src = '/demo-spritesheet.png'
 }
 
 export function SheetEditorProvider({ children }) {
@@ -157,6 +100,8 @@ export function SheetEditorProvider({ children }) {
   const [previewHeight, setPreviewHeight] = useState(initialState.previewHeight ?? defaults.previewHeight)
   const [title, setTitle] = useState(initialState.title ?? 'Sheet 1')
   const [disableGlobalDragDrop, setDisableGlobalDragDrop] = useState(false)
+  const [projectName, setProjectName] = useState(() => localStorage.getItem('spriteSheetEditorProjectName') || 'project')
+  const [sidebarWidth, setSidebarWidth] = useState(initialState.sidebarWidth ?? defaults.sidebarWidth)
 
   const lastLoadedKey = useRef(null)
   const activeSheetKey = spriteSheets[activeIndex]?.key
@@ -217,22 +162,89 @@ export function SheetEditorProvider({ children }) {
     }))
   }
 
-  useEffect(() => {
-    if (spriteSheets.length === 0) {
-      initializeDemoImage((dataUrl) => {
-        const key = 'demo'
-        try { localStorage.setItem(`spriteSheetImage_${key}`, dataUrl) } catch (e) {}
-        const demoSheet = defaultDemo.spriteSheets[0]
-        setSpriteSheets([demoSheet])
-        setActiveIndex(0)
-      })
-    } else if (activeSheetKey === 'demo' && !getSheetImage(activeSheetKey)) {
-      initializeDemoImage((dataUrl) => {
-        try { localStorage.setItem(`spriteSheetImage_${activeSheetKey}`, dataUrl) } catch (e) {}
-        setImage(dataUrl)
-      })
+  const loadProject = useCallback((project, filename = 'project') => {
+    if (!project || !Array.isArray(project.spriteSheets)) {
+      throw new Error('Invalid project file')
     }
-  }, [])
+    const baseName = filename.replace(/\.spritesheet$/i, '') || 'project'
+    setProjectName(baseName)
+    if (project.images) {
+      for (const [key, dataUrl] of Object.entries(project.images)) {
+        try {
+          localStorage.setItem(`spriteSheetImage_${key}`, dataUrl)
+        } catch (error) {
+          console.error('Error saving image to localStorage:', error)
+        }
+      }
+    }
+    const loadedPreviewHeight = project.previewHeight ?? previewHeight ?? defaults.previewHeight
+    setPreviewHeight(loadedPreviewHeight)
+    setSidebarWidth(project.sidebarWidth ?? defaults.sidebarWidth)
+    setPixelEditorSettings(project.pixelEditor ?? defaultPixelEditor)
+    setActiveIndex(project.activeIndex ?? 0)
+    setSpriteSheets(project.spriteSheets)
+    setSheetZoom(project.sheetZoom ?? 100)
+    setSheetPanOffset(project.sheetPanOffset ?? { x: 0, y: 0 })
+    setSpriteSize(project.spriteSize ?? null)
+    setResizeAlgo(project.resizeAlgo ?? 'nearest')
+  }, [previewHeight, setProjectName, setPreviewHeight, setSidebarWidth, setPixelEditorSettings, setActiveIndex, setSpriteSheets, setSheetZoom, setSheetPanOffset, setSpriteSize, setResizeAlgo])
+
+  const loadDemo = useCallback(() => {
+    fetch('/demo.spritesheet')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch demo project: ${r.status}`)
+        return r.json()
+      })
+      .then(project => {
+        loadProject(project, 'demo')
+      })
+      .catch(err => {
+        console.error('Failed to load demo project:', err)
+      })
+  }, [loadProject])
+
+  const resetEditor = () => {
+    try {
+      localStorage.clear()
+      localStorage.setItem('spriteSheetEditorState', JSON.stringify({ ...defaults, spriteSheets: [] }))
+    } catch (error) {
+      console.error('Error resetting editor:', error)
+    }
+    lastLoadedKey.current = null
+    setActiveIndex(0)
+    setSpriteSheets([])
+    setImage(null)
+    setRows(4)
+    setColumns(4)
+    setPadding({ top: 0, right: 0, bottom: 0, left: 0 })
+    setSelectedFrames({})
+    setPreviewSettings(createSheet('').preview)
+    setPixelEditorSettings(defaultPixelEditor)
+    setSpriteSize(null)
+    setResizeAlgo('nearest')
+    setSheetZoom(100)
+    setSheetPanOffset({ x: 0, y: 0 })
+    setPreviewHeight(defaults.previewHeight)
+    setTitle('Sheet 1')
+    setProjectName('project')
+    setSidebarWidth(defaults.sidebarWidth)
+    setDisableGlobalDragDrop(false)
+  }
+
+  useEffect(() => {
+    if (localStorage.getItem('spriteSheetEditorState')) return
+    fetch('/demo.spritesheet')
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch demo project: ${r.status}`)
+        return r.json()
+      })
+      .then(project => {
+        loadProject(project, 'demo')
+      })
+      .catch(err => {
+        console.error('Failed to load demo project:', err)
+      })
+  }, [loadProject, spriteSheets.length])
 
   useEffect(() => {
     const sheet = spriteSheets[activeIndex]
@@ -324,6 +336,7 @@ export function SheetEditorProvider({ children }) {
         sheetZoom,
         sheetPanOffset,
         previewHeight,
+        sidebarWidth,
         spriteSize,
         resizeAlgo,
         pixelEditor: pixelEditorSettings,
@@ -331,7 +344,7 @@ export function SheetEditorProvider({ children }) {
     } catch (error) {
       console.error('Error saving state to localStorage:', error)
     }
-  }, [activeIndex, spriteSheets, sheetZoom, sheetPanOffset, previewHeight, spriteSize, resizeAlgo, pixelEditorSettings])
+  }, [activeIndex, spriteSheets, sheetZoom, sheetPanOffset, previewHeight, sidebarWidth, spriteSize, resizeAlgo, pixelEditorSettings])
 
   useEffect(() => {
     if (!activeSheetKey) return
@@ -345,6 +358,14 @@ export function SheetEditorProvider({ children }) {
       console.error('Error saving image to localStorage:', error)
     }
   }, [activeSheetKey, image])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('spriteSheetEditorProjectName', projectName)
+    } catch (error) {
+      console.error('Error saving project name to localStorage:', error)
+    }
+  }, [projectName])
 
   const value = {
     activeIndex, setActiveIndex,
@@ -362,9 +383,12 @@ export function SheetEditorProvider({ children }) {
     sheetZoom, setSheetZoom,
     sheetPanOffset, setSheetPanOffset,
     previewHeight, setPreviewHeight,
+    sidebarWidth, setSidebarWidth,
     disableGlobalDragDrop, setDisableGlobalDragDrop,
+    projectName, setProjectName,
     activeSheetKey,
     addSheet, removeSheet, updateSheetByKey,
+    loadProject, loadDemo, resetEditor,
     setSelectedFrameIndex, toggleFrame,
   }
 

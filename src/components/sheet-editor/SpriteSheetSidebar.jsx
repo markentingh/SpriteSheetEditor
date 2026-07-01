@@ -43,11 +43,17 @@ function SpriteSheetSidebar() {
             }`}
             style={{ aspectRatio: '1' }}
           >
-            <img
-              src={sheet.thumbnail || localStorage.getItem(`spriteSheetImage_${sheet.key}`)}
-              alt={`Sheet ${index + 1}`}
-              className="w-full h-full object-contain bg-gray-950"
-            />
+            {sheet.thumbnail || localStorage.getItem(`spriteSheetImage_${sheet.key}`) ? (
+              <img
+                src={sheet.thumbnail || localStorage.getItem(`spriteSheetImage_${sheet.key}`)}
+                alt={`Sheet ${index + 1}`}
+                className="w-full h-full object-contain bg-gray-950"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-950 text-gray-500 text-xs font-medium">
+                empty
+              </div>
+            )}
             <div className="absolute inset-x-0 bottom-0 bg-black/60 text-[10px] text-center text-white py-0.5">
               {index + 1}
             </div>

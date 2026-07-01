@@ -9,25 +9,13 @@ function Sidebar() {
     rows, setRows,
     columns, setColumns,
     image,
-    selectedFrames, setSelectedFrames,
+    setSelectedFrames,
     padding, setPadding,
+    sidebarWidth, setSidebarWidth,
   } = useSheetEditor()
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    try {
-      const saved = localStorage.getItem('spriteSheetEditorSidebarWidth')
-      if (saved) return parseInt(saved, 10)
-    } catch (error) {}
-    return 320
-  })
   const [isResizing, setIsResizing] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const sidebarRef = useRef(null)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('spriteSheetEditorSidebarWidth', String(sidebarWidth))
-    } catch (error) {}
-  }, [sidebarWidth])
 
   const initializeFrames = (r, c) => {
     const frames = {}

@@ -2,24 +2,30 @@ import { useState, useRef, useEffect } from 'react'
 
 function MenuDropdown({ label, items, variant = 'toolbar' }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+  const labelKey = label.trim().toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+  const closeMenu = (e) => {
+    if (e && e.target.closest('.dropdown-menu-' + labelKey)) {
+      return
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+    setOpen(false)
+    document.body.removeEventListener('mouseup', closeMenu)
+  }
+
+  const openMenu = () => {
+    setOpen(true)
+    document.body.addEventListener('mouseup', closeMenu)
+  }
 
   const buttonClass = variant === 'toolbar'
     ? 'px-2.5 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded text-xs font-medium text-gray-300 hover:text-white transition-colors flex items-center gap-1'
     : 'px-3 py-1 text-white hover:bg-gray-800 rounded transition-colors flex items-center gap-1'
 
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(v => !v)} className={buttonClass}>
-        {label}
+    <div className={`relative dropdown-menu-${labelKey}`}>
+      <button onClick={openMenu} className={buttonClass}>
+        {label}&nbsp;
         <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
@@ -32,7 +38,7 @@ function MenuDropdown({ label, items, variant = 'toolbar' }) {
             ) : (
               <button
                 key={i}
-                onClick={() => { item.onClick(); setOpen(false) }}
+                onClick={() => { item.onClick(); closeMenu(); }}
                 className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors whitespace-nowrap"
               >
                 {item.label}

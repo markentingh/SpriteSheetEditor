@@ -8,23 +8,26 @@ import { useSheetEditor } from '../../app/SheetEditorContext'
 
 function SheetViewer() {
     const {
-        activeIndex, setActiveIndex,
-        spriteSheets, setSpriteSheets,
+        activeIndex,
+        spriteSheets,
         image, setImage,
-        rows, setRows,
-        columns, setColumns,
-        padding, setPadding,
-        title, setTitle,
-        selectedFrames, setSelectedFrames,
-        previewSettings, setPreviewSettings,
+        rows,
+        columns,
+        padding,
+        setTitle,
+        selectedFrames,
+        sidebarWidth,
+        previewSettings,
         pixelEditorSettings,
         spriteSize, setSpriteSize,
         resizeAlgo, setResizeAlgo,
         sheetZoom, setSheetZoom,
         sheetPanOffset, setSheetPanOffset,
-        previewHeight, setPreviewHeight,
+        previewHeight,
+        projectName, setProjectName,
         activeSheetKey,
-        removeSheet, updateSheetByKey,
+        addSheet, removeSheet,
+        loadProject, loadDemo, resetEditor,
         setSelectedFrameIndex, toggleFrame,
     } = useSheetEditor()
 
@@ -37,13 +40,8 @@ function SheetViewer() {
     const [showDeleteSheetModal, setShowDeleteSheetModal] = useState(false)
     const [showSaveAsDialog, setShowSaveAsDialog] = useState(false)
     const [saveAsFilename, setSaveAsFilename] = useState('project')
-    const [projectName, setProjectName] = useState(() => {
-        try {
-            return localStorage.getItem('spriteSheetEditorProjectName') || 'project'
-        } catch (error) {
-            return 'project'
-        }
-    })
+    const [showNewProjectModal, setShowNewProjectModal] = useState(false)
+    const [showDemoModal, setShowDemoModal] = useState(false)
     const [pendingDeleteSheetIndex, setPendingDeleteSheetIndex] = useState(null)
     const [pendingResizeSize, setPendingResizeSize] = useState(null)
     const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -53,6 +51,7 @@ function SheetViewer() {
     const mainRef = useRef(null)
     const sheetDragRef = useRef({ dragged: false, startX: 0, startY: 0 })
     const loadInputRef = useRef(null)
+    const imageInputRef = useRef(null)
 
     const imgCallbackRef = (el) => {
         imgRef.current = el
@@ -61,6 +60,24 @@ function SheetViewer() {
             if (el.naturalWidth) setImageScale(el.clientWidth / el.naturalWidth)
         }
         if (el.complete) { update() } else { el.addEventListener('load', update, { once: true }) }
+    }
+
+    const handleDragOver = (e) => {
+        e.preventDefault()
+    }
+
+    const handleDragLeave = (e) => {
+        e.preventDefault()
+    }
+
+    const handleDrop = (e) => {
+        e.preventDefault()
+        const file = e.dataTransfer.files[0]
+        if (file && (file.type === 'image/png' || file.type === 'image/jpeg')) {
+            const reader = new FileReader()
+            reader.onload = (event) => addSheet(event.target.result)
+            reader.readAsDataURL(file)
+        }
     }
 
     useEffect(() => {
@@ -72,12 +89,6 @@ function SheetViewer() {
         window.addEventListener('resize', updateScale)
         return () => window.removeEventListener('resize', updateScale)
     }, [])
-
-    useEffect(() => {
-        try {
-            localStorage.setItem('spriteSheetEditorProjectName', projectName)
-        } catch (error) {}
-    }, [projectName])
 
     useEffect(() => {
         if (showSaveAsDialog) {
@@ -253,6 +264,7 @@ function SheetViewer() {
             activeIndex,
             spriteSheets,
             previewHeight,
+            sidebarWidth,
             sheetZoom,
             sheetPanOffset,
             spriteSize,
@@ -287,38 +299,7 @@ function SheetViewer() {
         reader.onload = (e) => {
             try {
                 const project = JSON.parse(e.target.result)
-                if (!project || !Array.isArray(project.spriteSheets)) {
-                    throw new Error('Invalid project file')
-                }
-                const baseName = filename.replace(/\.spritesheet$/i, '') || 'project'
-                setProjectName(baseName)
-                if (project.images) {
-                    for (const [key, dataUrl] of Object.entries(project.images)) {
-                        localStorage.setItem(`spriteSheetImage_${key}`, dataUrl)
-                    }
-                }
-                const loadedPreviewHeight = project.previewHeight ?? previewHeight ?? 200
-                setPreviewHeight(loadedPreviewHeight)
-                const loadedSheets = project.spriteSheets.map(sheet => {
-                    const { preview, ...rest } = sheet
-                    const { height, ...previewWithoutHeight } = preview || {}
-                    return { ...rest, preview: previewWithoutHeight }
-                })
-                setActiveIndex(project.activeIndex ?? 0)
-                setSpriteSheets(loadedSheets)
-                setSheetZoom(project.sheetZoom ?? 100)
-                setSheetPanOffset(project.sheetPanOffset ?? { x: 0, y: 0 })
-                setSpriteSize(project.spriteSize ?? null)
-                setResizeAlgo(project.resizeAlgo ?? 'nearest')
-                const active = loadedSheets[project.activeIndex ?? 0]
-                if (active) {
-                    setImage(localStorage.getItem(`spriteSheetImage_${active.key}`))
-                    setRows(active.rows)
-                    setColumns(active.columns)
-                    setPadding({ top: active.padding[0], right: active.padding[1], bottom: active.padding[2], left: active.padding[3] })
-                    setSelectedFrames(active.selectedFrames)
-                    setPreviewSettings(active.preview)
-                }
+                loadProject(project, filename)
             } catch (err) {
                 console.error('Failed to load project:', err)
                 alert('Failed to load project. The file may be corrupted.')
@@ -356,77 +337,30 @@ function SheetViewer() {
             <main
                 ref={mainRef}
                 className="flex-1 relative overflow-hidden bg-gray-950"
-                onMouseDown={(e) => {
-                    if (!image) return
-                    sheetDragRef.current = { dragged: false, startX: e.clientX, startY: e.clientY }
-                    setIsSheetPanning(true)
-                    setSheetPanStart({ x: e.clientX - sheetPanOffset.x, y: e.clientY - sheetPanOffset.y })
-                }}
-                onMouseMove={(e) => {
-                    if (!isSheetPanning) return
-                    const dx = e.clientX - sheetDragRef.current.startX
-                    const dy = e.clientY - sheetDragRef.current.startY
-                    if (!sheetDragRef.current.dragged && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
-                        sheetDragRef.current.dragged = true
-                    }
-                    setSheetPanOffset({ x: e.clientX - sheetPanStart.x, y: e.clientY - sheetPanStart.y })
-                }}
-                onMouseUp={() => setIsSheetPanning(false)}
-                onMouseLeave={() => setIsSheetPanning(false)}
-                onWheel={(e) => { if (!image) return; setSheetZoom(z => Math.min(400, Math.max(10, z - Math.sign(e.deltaY) * 10))) }}
-                style={{ cursor: image ? (isSheetPanning && sheetDragRef.current.dragged ? 'grabbing' : 'grab') : 'default' }}
             >
-                {!image ? (
-                    <div className="absolute inset-0 flex items-center justify-center p-8">
-                        <div
-                            className={`w-full max-w-2xl h-96 border-[3px] rounded-xl flex flex-col 
-                                items-center justify-center cursor-pointer transition-all duration-200 
-                                border-gray-700 bg-gray-900/50 hover:border-purple-400 hover:bg-gray-900/70`}
-                            style={{
-                                borderStyle: 'dashed',
-                                borderSpacing: '10px'
-                            }}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            <div className="p-8 rounded-full bg-gray-800/50 mb-6">
-                                <svg className="w-16 h-16 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                            </div>
-                            <p className="text-xl text-gray-200 mb-2 font-medium">Drop sprite sheet here</p>
-                            <p className="text-sm text-gray-400">or click to add (PNG or JPG)</p>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/png,image/jpeg"
-                                onChange={handleFileInput}
-                                className="hidden"
+                {(() => {
+                    const SIZES = [16, 32, 48, 64, 96, 128, 256, 512]
+                    const origW = imgRef.current?.naturalWidth || 0
+                    const pad2 = padding || { top: 0, right: 0, bottom: 0, left: 0 }
+                    const origFrameW = columns > 0 ? Math.round((origW - pad2.left - pad2.right) / columns) : 0
+                    const activeSize = spriteSize ?? (origFrameW > 0 ? origFrameW : null)
+                    const customDefault = origFrameW > 0 ? String(origFrameW) : ''
+                    return (
+                        <div className="absolute top-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800 px-4 py-2 flex items-center gap-1 z-30">
+                            <MenuDropdown
+                                label="File"
+                                variant="pixel-editor"
+                                items={[
+                                    { label: 'New Project', onClick: () => setShowNewProjectModal(true) },
+                                    { label: 'Load Project', onClick: () => loadInputRef.current?.click() },
+                                    'separator',
+                                    { label: 'Save As', onClick: () => setShowSaveAsDialog(true) },
+                                    'separator',
+                                    { label: 'View Demo', onClick: () => setShowDemoModal(true) },
+                                ]}
                             />
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {image && (() => {
-                            const SIZES = [16, 32, 48, 64, 96, 128, 256, 512]
-                            const origW = imgRef.current?.naturalWidth || 0
-                            const pad2 = padding || { top: 0, right: 0, bottom: 0, left: 0 }
-                            const origFrameW = columns > 0 ? Math.round((origW - pad2.left - pad2.right) / columns) : 0
-                            const activeSize = spriteSize ?? (origFrameW > 0 ? origFrameW : null)
-                            const customDefault = origFrameW > 0 ? String(origFrameW) : ''
-                            return (
-                                <div className="absolute top-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800 px-4 py-2 flex items-center gap-1 z-30" onMouseDown={(e) => e.stopPropagation()}>
-                                    <MenuDropdown
-                                        label="File"
-                                        variant="pixel-editor"
-                                        items={[
-                                            { label: 'Save As', onClick: () => setShowSaveAsDialog(true) },
-                                            'separator',
-                                            { label: 'Load', onClick: () => loadInputRef.current?.click() },
-                                        ]}
-                                    />
+                            {image && (
+                                <>
                                     <MenuDropdown
                                         label="Sheets"
                                         variant="pixel-editor"
@@ -457,7 +391,7 @@ function SheetViewer() {
                                             min="1"
                                             defaultValue={customDefault}
                                             placeholder="custom"
-                                            className={`w-20 px-2 py-1 border rounded text-xs font-medium bg-gray-800 text-gray-300 focus:outline-none focus:border-purple-500 transition-colors ${activeSize !== null && !SIZES.includes(activeSize) ? 'border-purple-500 text-white' : 'border-gray-700'
+                                            className={`w-20 px-2 py-1 border rounded text-xs font-medium bg-gray-800 text-gray-300 focus:outline-none focus:border-purple-500 transition-colors ${activeSize !== null && !SIZES.includes(activeSize) ? 'border-purple-500 text-white' : 'border-gray-700'}
                                                 }`}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') {
@@ -477,9 +411,121 @@ function SheetViewer() {
                                             Go
                                         </button>
                                     </div>
+                                </>
+                            )}
+                        </div>
+                    )
+                })()}
+                {image && (() => {
+                    const nw = imgRef.current?.naturalWidth || 0
+                    const nh = imgRef.current?.naturalHeight || 0
+                    const pad = padding || { top: 0, right: 0, bottom: 0, left: 0 }
+                    const frameW = columns > 0 ? Math.round((nw - pad.left - pad.right) / columns) : 0
+                    const frameH = rows > 0 ? Math.round((nh - pad.top - pad.bottom) / rows) : 0
+                    const totalFrames = rows * columns
+                    const totalSelected = Object.values(selectedFrames).filter(Boolean).length
+                    const sep = <span className="text-gray-700 select-none mx-1">|</span>
+                    return (
+                        <div className="absolute bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-t border-gray-800 px-4 py-1.5 flex items-center gap-2 text-xs text-gray-400 z-30 pointer-events-none">
+                            <span>Sheet: <span className="text-gray-200">{nw} × {nh}px</span></span>
+                            {sep}
+                            <span>Frame: <span className="text-gray-200">{frameW} × {frameH}px</span></span>
+                            {sep}
+                            <span>Grid: <span className="text-gray-200">{columns}c × {rows}r</span></span>
+                            {sep}
+                            <span>Frames: <span className="text-gray-200">{totalFrames}</span></span>
+                            {sep}
+                            <span>Selected: <span className="text-gray-200">{totalSelected}</span></span>
+                            <div className="ml-auto flex items-center gap-3 pointer-events-auto">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-gray-500">Zoom</span>
+                                    <input
+                                        type="range"
+                                        min="10"
+                                        max="400"
+                                        value={sheetZoom}
+                                        onChange={(e) => setSheetZoom(parseInt(e.target.value))}
+                                        className="w-24 accent-purple-500"
+                                    />
+                                    <span className="text-gray-200 w-8 text-right">{sheetZoom}%</span>
                                 </div>
-                            )
-                        })()}
+                                <button
+                                    onClick={() => { setSheetPanOffset({ x: 0, y: 0 }); setSheetZoom(100) }}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 hover:border-gray-500 transition-colors text-gray-300 hover:text-white"
+                                    title="Reset pan and zoom"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+                    )
+                })()}
+                <div
+                    className="absolute inset-0"
+                    onMouseDown={(e) => {
+                        if (!image) return
+                        sheetDragRef.current = { dragged: false, startX: e.clientX, startY: e.clientY }
+                        setIsSheetPanning(true)
+                        setSheetPanStart({ x: e.clientX - sheetPanOffset.x, y: e.clientY - sheetPanOffset.y })
+                    }}
+                    onMouseMove={(e) => {
+                        if (!isSheetPanning) return
+                        const dx = e.clientX - sheetDragRef.current.startX
+                        const dy = e.clientY - sheetDragRef.current.startY
+                        if (!sheetDragRef.current.dragged && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+                            sheetDragRef.current.dragged = true
+                        }
+                        setSheetPanOffset({ x: e.clientX - sheetPanStart.x, y: e.clientY - sheetPanStart.y })
+                    }}
+                    onMouseUp={() => setIsSheetPanning(false)}
+                    onMouseLeave={() => setIsSheetPanning(false)}
+                    onWheel={(e) => { if (!image) return; setSheetZoom(z => Math.min(400, Math.max(10, z - Math.sign(e.deltaY) * 10))) }}
+                    style={{ cursor: image ? (isSheetPanning && sheetDragRef.current.dragged ? 'grabbing' : 'grab') : 'default' }}
+                >
+                    {!image ? (
+                        <div className="absolute inset-0 flex items-center justify-center p-8">
+                        <div
+                            className={`w-full max-w-2xl h-96 border-[3px] rounded-xl flex flex-col 
+                                items-center justify-center cursor-pointer transition-all duration-200 
+                                border-gray-700 bg-gray-900/50 hover:border-purple-400 hover:bg-gray-900/70`}
+                            style={{
+                                borderStyle: 'dashed',
+                                borderSpacing: '10px'
+                            }}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            onClick={() => imageInputRef.current?.click()}
+                        >
+                            <div className="p-8 rounded-full bg-gray-800/50 mb-6">
+                                <svg className="w-16 h-16 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                            </div>
+                            <p className="text-xl text-gray-200 mb-2 font-medium">Drop sprite sheet here</p>
+                            <p className="text-sm text-gray-400">or click to add (PNG or JPG)</p>
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/png,image/jpeg"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file && (file.type === 'image/png' || file.type === 'image/jpeg')) {
+                                        const reader = new FileReader()
+                                        reader.onload = (event) => addSheet(event.target.result)
+                                        reader.readAsDataURL(file)
+                                    }
+                                    e.target.value = ''
+                                }}
+                                className="hidden"
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <>
                         {image && (() => {
                             const nw = imgRef.current?.naturalWidth || 0
                             const nh = imgRef.current?.naturalHeight || 0
@@ -653,6 +699,7 @@ function SheetViewer() {
                         </div>
                     </>
                 )}
+                </div>
             </main>
 
             <SpriteSheetSidebar />
@@ -747,6 +794,52 @@ function SheetViewer() {
                             </button>
                             <button
                                 onClick={() => setShowSaveAsDialog(false)}
+                                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showNewProjectModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowNewProjectModal(false)}>
+                    <div className="bg-gray-800 rounded-xl p-6 w-96 border border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-white mb-2">New Project</h3>
+                        <p className="text-gray-400 text-sm mb-6">This will remove your sprite sheets and reset all settings to their defaults. This cannot be undone.</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { resetEditor(); setShowNewProjectModal(false) }}
+                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors text-white"
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={() => setShowNewProjectModal(false)}
+                                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showDemoModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowDemoModal(false)}>
+                    <div className="bg-gray-800 rounded-xl p-6 w-96 border border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-white mb-2">View Demo</h3>
+                        <p className="text-gray-400 text-sm mb-6">This will replace your current sprite sheet and all settings with the demo. Your existing work will be lost.</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { loadDemo(); setShowDemoModal(false) }}
+                                className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors text-white"
+                            >
+                                Load Demo
+                            </button>
+                            <button
+                                onClick={() => setShowDemoModal(false)}
                                 className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-white"
                             >
                                 Cancel

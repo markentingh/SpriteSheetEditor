@@ -649,10 +649,7 @@ function PixelEditor() {
 
   const handleDownloadFrame = () => {
     if (!canvasRef.current) return
-    
-    setShowFileMenu(false)
-    
-    // Create download link
+
     canvasRef.current.toBlob((blob) => {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
